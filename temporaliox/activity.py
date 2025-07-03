@@ -16,7 +16,7 @@ from temporalio.workflow import (
     VersioningIntent,
 )
 
-__all__ = ["decl", "ActivityStub", "activities_for_queue"]
+__all__ = ["decl", "ActivityDeclaration", "activities_for_queue"]
 
 T = TypeVar("T", bound=Callable[..., Any])
 
@@ -26,7 +26,7 @@ _activity_registry: defaultdict[str, list[Callable]] = defaultdict(list)
 
 
 @dataclass(frozen=True)
-class ActivityStub:
+class ActivityDeclaration:
     name: str
     signature: inspect.Signature
     options: dict[str, Any]
@@ -34,9 +34,9 @@ class ActivityStub:
     @staticmethod
     def from_func(
         func: Callable, task_queue: str, options: dict[str, Any]
-    ) -> ActivityStub:
+    ) -> ActivityDeclaration:
         name = func.__qualname__
-        stub = ActivityStub(
+        stub = ActivityDeclaration(
             name=name,
             signature=inspect.signature(func),
             options={"task_queue": task_queue, **options},
@@ -102,7 +102,7 @@ def decl(
     versioning_intent: VersioningIntent | None = None,
     summary: str | None = None,
     priority: Priority | None = None,
-) -> Callable[[T], ActivityStub]:
+) -> Callable[[T], ActivityDeclaration]:
     """
     Declare an activity with Temporal options.
 
@@ -126,9 +126,9 @@ def decl(
     ...
 
 
-def decl(task_queue: str, **activity_options) -> Callable[[T], ActivityStub]:
-    def decorator(func: T) -> ActivityStub:
-        return ActivityStub.from_func(func, task_queue, activity_options)
+def decl(task_queue: str, **activity_options) -> Callable[[T], ActivityDeclaration]:
+    def decorator(func: T) -> ActivityDeclaration:
+        return ActivityDeclaration.from_func(func, task_queue, activity_options)
 
     return decorator
 

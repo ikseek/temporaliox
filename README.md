@@ -91,15 +91,15 @@ The `activities_for_queue()` function will:
 
 - **Separation of Concerns**: Declare activity signatures and Temporal configuration separately from implementations
 - **Type Safety**: Full type hints support for better IDE experience
-- **Automatic Registration**: Activities are automatically registered with Temporal using the `@stub.defn` decorator
+- **Automatic Registration**: Activities are automatically registered with Temporal using the `@ActivityDeclaration.defn` decorator
 - **Flexible Execution**: Support for both `await` (execute_activity) and `.start()` (start_activity) patterns
 - **Queue-based Organization**: Activities are organized by task queue for easy worker setup
 
 ## How It Works
 
-1. `@decl()` creates an `ActivityStub` that holds the activity configuration and registers it as undefined
-2. `@stub.defn` decorates the implementation, registers it with Temporal, and moves it to the implemented registry
-3. When called in a workflow, the stub uses `workflow.execute_activity` or `workflow.start_activity` with the configured options
+1. `@decl()` creates an `ActivityDeclaration` that holds the activity configuration and registers it as undefined
+2. `@ActivityDeclaration.defn` decorates the implementation, registers it with Temporal, and moves it to the implemented registry
+3. When called in a workflow, the activity uses `workflow.execute_activity` or `workflow.start_activity` with the configured options
 4. `activities_for_queue()` collects all implemented activities for a queue, ensuring no undefined activities remain
 
 ## Development

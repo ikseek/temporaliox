@@ -18,7 +18,7 @@ SIMPLE_QUEUE = "unit-test"
 
 class TestActivityDeclaration:
     def test_activity_stub_creation(self):
-        """Test that activity.decl creates a proper ActivityStub."""
+        """Test that activity.decl creates a proper ActivityDeclaration."""
 
         @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=30))
         def test_activity(name: str, value: int) -> str:
@@ -317,7 +317,7 @@ class TestStringRepresentations:
             pass
 
         expected = (
-            "ActivityStub(name='TestStringRepresentations."
+            "ActivityDeclaration(name='TestStringRepresentations."
             + "test_repr_representation_simple.<locals>.simple_activity', "
             + "signature=<Signature (name: str) -> str>, "
             + "options={'task_queue': 'unit-test-queue'})"
@@ -333,7 +333,7 @@ class TestStringRepresentations:
             pass
 
         expected = (
-            "ActivityStub(name='TestStringRepresentations."
+            "ActivityDeclaration(name='TestStringRepresentations."
             + "test_repr_representation_with_options.<locals>.complex_activity', "
             + "signature=<Signature (x: int, y: str) -> bool>, "
             + "options={'task_queue': 'unit-complex-queue', "
@@ -364,7 +364,7 @@ class TestStringRepresentations:
             pass
 
         expected = (
-            "ActivityStub(name='TestStringRepresentations."
+            "ActivityDeclaration(name='TestStringRepresentations."
             + "test_repr_representation_preserves_dataclass_format.<locals>."
             + "test_activity', signature=<Signature () -> None>, "
             + "options={'task_queue': 'unit-test'})"
