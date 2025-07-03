@@ -376,18 +376,22 @@ class TestActivityRegistry:
     def setup_method(self):
         """Save and clear the registry before each test."""
         # Save current state
-        self._saved_activity_registry = {k: v.copy() for k, v in _activity_registry.items()}
-        self._saved_undefined_activities = {k: v.copy() for k, v in _undefined_activities.items()}
-        
+        self._saved_activity_registry = {
+            k: v.copy() for k, v in _activity_registry.items()
+        }
+        self._saved_undefined_activities = {
+            k: v.copy() for k, v in _undefined_activities.items()
+        }
+
         # Clear the registry for the test
         _activity_registry.clear()
         _undefined_activities.clear()
-        
+
     def teardown_method(self):
         """Restore the registry after each test."""
         _activity_registry.clear()
         _undefined_activities.clear()
-        
+
         # Restore previous state
         _activity_registry.update(self._saved_activity_registry)
         _undefined_activities.update(self._saved_undefined_activities)
