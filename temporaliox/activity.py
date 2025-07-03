@@ -4,7 +4,7 @@ import inspect
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import timedelta
-from functools import cached_property, wraps
+from functools import cached_property, update_wrapper
 from typing import Any, Callable, TypeVar, overload
 
 from temporalio import activity as temporal_activity
@@ -75,9 +75,11 @@ class ActivityStub:
             def kwargs_unpacking_adapter(kwargs: dict):
                 return impl_func(**kwargs)
 
-        adapter_sign = inspect.signature(kwargs_unpacking_adapter)
-        kwargs_unpacking_adapter = wraps(impl_func)(kwargs_unpacking_adapter)
-        kwargs_unpacking_adapter.__signature__ = adapter_sign
+        update_wrapper(
+            kwargs_unpacking_adapter,
+            impl_func,
+            assigned=("__module__", "__name__", "__qualname__", "__doc__"),
+        )
 
         activity_impl = temporal_activity.defn(name=self.name)(kwargs_unpacking_adapter)
 
