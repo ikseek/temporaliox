@@ -67,15 +67,17 @@ class ActivityStub:
             )
         if inspect.iscoroutinefunction(impl_func):
 
-            @wraps(impl_func)
             async def kwargs_unpacking_adapter(kwargs: dict):
                 return await impl_func(**kwargs)
 
         else:
 
-            @wraps(impl_func)
             def kwargs_unpacking_adapter(kwargs: dict):
                 return impl_func(**kwargs)
+
+        adapter_sign = inspect.signature(kwargs_unpacking_adapter)
+        kwargs_unpacking_adapter = wraps(impl_func)(kwargs_unpacking_adapter)
+        kwargs_unpacking_adapter.__signature__ = adapter_sign
 
         activity_impl = temporal_activity.defn(name=self.name)(kwargs_unpacking_adapter)
 

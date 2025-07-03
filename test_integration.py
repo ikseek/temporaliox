@@ -25,6 +25,18 @@ async def generate_report_impl(user_name: str, action: str) -> str:
     return f"{action}, {user_name}!"
 
 
+# Single string argument activity declaration
+@decl(task_queue="test-queue", start_to_close_timeout=timedelta(seconds=60))
+def process_message(message: str) -> str:
+    pass
+
+
+# Single string argument activity implementation
+@process_message.defn
+async def process_message_impl(message: str) -> str:
+    return f"Processed: {message}"
+
+
 # Workflow for testing
 @workflow.defn()
 class TestWorkflow:
@@ -54,7 +66,7 @@ async def temporal_worker(temporal_client):
     async with Worker(
         temporal_client,
         task_queue="test-queue",
-        workflows=[TestWorkflow],
+        workflows=[TestWorkflow, TestSingleArgWorkflow],
         activities=activities_for_queue("test-queue"),
     ) as worker:
         yield worker
@@ -119,3 +131,46 @@ async def test_multiple_activity_starts(temporal_client):
         )
 
         assert result == "First, Charlie!|Second, Charlie!|Third, Charlie!"
+
+
+# Workflow for testing single string argument activity
+@workflow.defn()
+class TestSingleArgWorkflow:
+    @workflow.run
+    async def run(self, message: str) -> str:
+        # Test regular execution
+        result = await process_message(message)
+
+        # Test start method
+        handle = process_message.start(f"{message} again")
+        result2 = await handle
+
+        return f"{result}|{result2}"
+
+
+@pytest.mark.asyncio
+async def test_single_str_activity_execution(temporal_client, temporal_worker):
+    """Test activity with single string argument."""
+    result = await temporal_client.execute_workflow(
+        TestSingleArgWorkflow.run,
+        args=["Hello World"],
+        id=f"test-single-str-workflow-{asyncio.get_event_loop().time()}",
+        task_queue="test-queue",
+    )
+
+    assert result == "Processed: Hello World|Processed: Hello World again"
+
+
+@pytest.mark.asyncio
+async def test_single_str_activity_with_different_messages(
+    temporal_client, temporal_worker
+):
+    """Test single string activity with different messages."""
+    result = await temporal_client.execute_workflow(
+        TestSingleArgWorkflow.run,
+        args=["Test Message"],
+        id=f"test-single-str-workflow-{asyncio.get_event_loop().time()}",
+        task_queue="test-queue",
+    )
+
+    assert result == "Processed: Test Message|Processed: Test Message again"
