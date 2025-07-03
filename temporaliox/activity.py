@@ -13,7 +13,6 @@ from temporalio.common import Priority, RetryPolicy
 from temporalio.workflow import (
     ActivityCancellationType,
     ActivityHandle,
-    VersioningIntent,
 )
 
 __all__ = ["decl", "ActivityDeclaration", "activities_for_queue"]
@@ -105,8 +104,6 @@ def decl(
     heartbeat_timeout: timedelta | None = None,
     retry_policy: RetryPolicy | None = None,
     cancellation_type: ActivityCancellationType = None,
-    activity_id: str | None = None,
-    versioning_intent: VersioningIntent | None = None,
     summary: str | None = None,
     priority: Priority | None = None,
     no_thread_cancel_exception: bool = None,
@@ -117,7 +114,7 @@ def decl(
     This overload provides IDE support for all Temporal activity options.
     All parameters match those in temporalio.workflow.execute_activity.
 
-    Args:
+    Activity Start Args:
         task_queue: Task queue name for the activity
         result_type: Expected return type (for type hints)
         schedule_to_close_timeout: Maximum time from scheduling to completion
@@ -126,10 +123,9 @@ def decl(
         heartbeat_timeout: Maximum time between heartbeats
         retry_policy: How to retry failed activities
         cancellation_type: How to handle cancellation
-        activity_id: Unique identifier for this activity execution
-        versioning_intent: Versioning behavior
         summary: Human-readable summary
         priority: Activity priority
+    Activity Definition Args:
         no_thread_cancel_exception: Whether to disable thread cancellation
     """
     ...
