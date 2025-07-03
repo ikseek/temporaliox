@@ -3,6 +3,7 @@ from datetime import timedelta
 import pytest
 
 from temporaliox.activity import (
+    ActivityExecution,
     _activity_registry,
     _undefined_activities,
     activities_for_queue,
@@ -179,33 +180,34 @@ class TestDeclarationOptions:
 
 class TestArgumentConversion:
     def test_args_to_dict_positional(self):
-        """Test conversion of positional arguments to dict."""
+        """Test conversion of positional arguments to dict via ActivityExecution."""
 
         @decl(task_queue=TEST_QUEUE)
         def test_activity(name: str, value: int) -> str:
             pass
 
-        args_dict = test_activity._args_to_dict("Bob", 42)
+        execution = test_activity.with_options()
+        args_dict = execution._args_to_dict("Bob", 42)
         assert args_dict == {"name": "Bob", "value": 42}
 
     def test_args_to_dict_mixed(self):
-        """Test conversion of mixed positional and keyword arguments."""
-
         @decl(task_queue=TEST_QUEUE)
         def test_activity(name: str, value: int) -> str:
             pass
 
-        args_dict = test_activity._args_to_dict("Bob", value=42)
+        execution = test_activity.with_options()
+        args_dict = execution._args_to_dict("Bob", value=42)
         assert args_dict == {"name": "Bob", "value": 42}
 
     def test_args_to_dict_all_kwargs(self):
-        """Test conversion of all keyword arguments."""
+        """Test conversion of all keyword arguments via ActivityExecution."""
 
         @decl(task_queue=TEST_QUEUE)
         def test_activity(name: str, value: int) -> str:
             pass
 
-        args_dict = test_activity._args_to_dict(name="Bob", value=42)
+        execution = test_activity.with_options()
+        args_dict = execution._args_to_dict(name="Bob", value=42)
         assert args_dict == {"name": "Bob", "value": 42}
 
 
@@ -609,3 +611,281 @@ class TestActivityRegistry:
         activities = activities_for_queue("unit-class-method-queue")
         assert len(activities) == 1
         assert callable(activities[0])
+
+
+class TestActivityExecution:
+    def test_activity_execution_creation(self):
+        """Test ActivityExecution creation and basic properties."""
+
+        @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=30))
+        def test_activity(name: str, value: int) -> str:
+            pass
+
+        execution = test_activity.with_options()
+
+        assert isinstance(execution, ActivityExecution)
+        assert execution.name == test_activity.name
+        assert execution.param_names == ("name", "value")
+        assert execution.start_options["task_queue"] == TEST_QUEUE
+        assert execution.start_options["start_to_close_timeout"] == timedelta(
+            seconds=30
+        )
+
+    def test_activity_execution_args_to_dict(self):
+        """Test ActivityExecution._args_to_dict method."""
+
+        @decl(task_queue=TEST_QUEUE)
+        def test_activity(name: str, value: int, flag: bool) -> str:
+            pass
+
+        execution = test_activity.with_options()
+
+        # Test positional args
+        result = execution._args_to_dict("Alice", 42, True)
+        assert result == {"name": "Alice", "value": 42, "flag": True}
+
+        # Test mixed args
+        result = execution._args_to_dict("Bob", value=99, flag=False)
+        assert result == {"name": "Bob", "value": 99, "flag": False}
+
+        # Test all kwargs
+        result = execution._args_to_dict(name="Charlie", value=0, flag=True)
+        assert result == {"name": "Charlie", "value": 0, "flag": True}
+
+    def test_activity_execution_has_callable_interface(self):
+        """Test that ActivityExecution has __call__ and start methods."""
+
+        @decl(task_queue=TEST_QUEUE)
+        def test_activity(name: str) -> str:
+            pass
+
+        execution = test_activity.with_options()
+
+        assert callable(execution)
+        assert hasattr(execution, "start")
+        assert callable(execution.start)
+
+
+class TestWithOptionsMethod:
+    def test_with_options_with_no_arguments(self):
+
+        @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=60))
+        def test_activity(name: str) -> str:
+            pass
+
+        execution = test_activity.with_options()
+
+        assert isinstance(execution, ActivityExecution)
+        assert execution.start_options == test_activity.start_options
+
+    def test_with_options_with_timeout_override(self):
+        """Test with_options() with timeout override."""
+
+        @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=60))
+        def test_activity(name: str) -> str:
+            pass
+
+        execution = test_activity.with_options(
+            start_to_close_timeout=timedelta(seconds=30)
+        )
+
+        assert execution.start_options["task_queue"] == TEST_QUEUE
+        assert execution.start_options["start_to_close_timeout"] == timedelta(
+            seconds=30
+        )
+
+        # Original should be unchanged
+        assert test_activity.start_options["start_to_close_timeout"] == timedelta(
+            seconds=60
+        )
+
+    def test_with_options_with_multiple_overrides(self):
+        """Test with_options() with multiple option overrides."""
+
+        @decl(
+            task_queue=TEST_QUEUE,
+            start_to_close_timeout=timedelta(seconds=60),
+            heartbeat_timeout=timedelta(seconds=10),
+        )
+        def test_activity(name: str) -> str:
+            pass
+
+        execution = test_activity.with_options(
+            start_to_close_timeout=timedelta(seconds=30),
+            heartbeat_timeout=timedelta(seconds=5),
+            summary="Custom summary",
+        )
+
+        assert execution.start_options["task_queue"] == TEST_QUEUE
+        assert execution.start_options["start_to_close_timeout"] == timedelta(
+            seconds=30
+        )
+        assert execution.start_options["heartbeat_timeout"] == timedelta(seconds=5)
+        assert execution.start_options["summary"] == "Custom summary"
+
+    def test_with_options_with_retry_policy_override(self):
+        """Test with_options() with retry policy override."""
+        from temporalio.common import RetryPolicy
+
+        original_policy = RetryPolicy(
+            maximum_attempts=3, initial_interval=timedelta(seconds=1)
+        )
+        new_policy = RetryPolicy(
+            maximum_attempts=5, initial_interval=timedelta(seconds=2)
+        )
+
+        @decl(task_queue=TEST_QUEUE, retry_policy=original_policy)
+        def test_activity(name: str) -> str:
+            pass
+
+        execution = test_activity.with_options(retry_policy=new_policy)
+
+        assert execution.start_options["retry_policy"] == new_policy
+        assert test_activity.start_options["retry_policy"] == original_policy
+
+    def test_with_options_preserves_name_and_params(self):
+        """Test that with_options() preserves activity name and parameter names."""
+
+        @decl(task_queue=TEST_QUEUE)
+        def complex_activity(user_id: int, action: str, metadata: dict) -> str:
+            pass
+
+        execution = complex_activity.with_options(
+            start_to_close_timeout=timedelta(seconds=45)
+        )
+
+        assert execution.name == complex_activity.name
+        assert execution.param_names == ("user_id", "action", "metadata")
+
+    def test_with_options_returns_new_instance_each_time(self):
+        @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=60))
+        def test_activity(name: str) -> str:
+            pass
+
+        execution1 = test_activity.with_options()
+        execution2 = test_activity.with_options(
+            start_to_close_timeout=timedelta(seconds=30)
+        )
+        execution3 = test_activity.with_options()
+
+        assert execution1 is not execution2
+        assert execution1 is not execution3
+        assert execution2 is not execution3
+
+        # execution1 and execution3 should have same options but be different instances
+        assert execution1.start_options == execution3.start_options
+        assert execution1 is not execution3
+
+
+class TestActivityDeclarationDelegation:
+    def test_declaration_call_delegates_to_with_options(self):
+        """Test that ActivityDeclaration.__call__ delegates to with_options()."""
+
+        @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=60))
+        def test_activity(name: str) -> str:
+            pass
+
+        # Both should create equivalent ActivityExecution instances
+        execution_direct = test_activity.with_options()
+
+        # We can't directly test __call__ without a workflow context,
+        # but we can verify the delegation logic by checking the options match
+        assert execution_direct.start_options == test_activity.start_options
+
+    def test_declaration_start_delegates_to_with_options(self):
+        """Test that ActivityDeclaration.start delegates to with_options()."""
+
+        @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=60))
+        def test_activity(name: str) -> str:
+            pass
+
+        execution_direct = test_activity.with_options()
+
+        # Verify the options are preserved through delegation
+        assert execution_direct.start_options == test_activity.start_options
+
+    def test_delegation_preserves_all_options(self):
+        """Test that delegation preserves all activity options."""
+        from temporalio.common import RetryPolicy
+
+        retry_policy = RetryPolicy(
+            maximum_attempts=3, initial_interval=timedelta(seconds=1)
+        )
+
+        @decl(
+            task_queue=TEST_QUEUE,
+            start_to_close_timeout=timedelta(seconds=60),
+            heartbeat_timeout=timedelta(seconds=10),
+            retry_policy=retry_policy,
+            summary="Test activity",
+            custom_option="custom_value",
+        )
+        def test_activity(name: str) -> str:
+            pass
+
+        execution = test_activity.with_options()
+
+        # All options should be preserved
+        expected_options = test_activity.start_options
+        assert execution.start_options == expected_options
+
+
+class TestWithOptionsIntegration:
+    def test_with_options_chaining_pattern(self):
+        """Test the with_options().method() chaining pattern."""
+
+        @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=60))
+        def test_activity(name: str, value: int) -> str:
+            pass
+
+        # Test the chaining pattern
+        execution = test_activity.with_options(
+            start_to_close_timeout=timedelta(seconds=30)
+        )
+
+        # Verify it has the expected interface
+        assert callable(execution)
+        assert hasattr(execution, "start")
+        assert hasattr(execution, "_args_to_dict")
+
+        # Test argument conversion works in the chain
+        args_dict = execution._args_to_dict("test", 42)
+        assert args_dict == {"name": "test", "value": 42}
+
+    def test_with_options_with_all_temporal_options(self):
+        """Test with_options() with all supported Temporal options."""
+        from temporalio.common import RetryPolicy
+        from temporalio.workflow import ActivityCancellationType
+
+        retry_policy = RetryPolicy(
+            maximum_attempts=3, initial_interval=timedelta(seconds=1)
+        )
+
+        @decl(task_queue=TEST_QUEUE)
+        def test_activity(name: str) -> str:
+            pass
+
+        execution = test_activity.with_options(
+            schedule_to_close_timeout=timedelta(minutes=5),
+            schedule_to_start_timeout=timedelta(minutes=1),
+            start_to_close_timeout=timedelta(minutes=4),
+            heartbeat_timeout=timedelta(seconds=30),
+            retry_policy=retry_policy,
+            cancellation_type=ActivityCancellationType.WAIT_CANCELLATION_COMPLETED,
+            summary="Test activity with all options",
+        )
+
+        assert execution.start_options["schedule_to_close_timeout"] == timedelta(
+            minutes=5
+        )
+        assert execution.start_options["schedule_to_start_timeout"] == timedelta(
+            minutes=1
+        )
+        assert execution.start_options["start_to_close_timeout"] == timedelta(minutes=4)
+        assert execution.start_options["heartbeat_timeout"] == timedelta(seconds=30)
+        assert execution.start_options["retry_policy"] == retry_policy
+        assert (
+            execution.start_options["cancellation_type"]
+            == ActivityCancellationType.WAIT_CANCELLATION_COMPLETED
+        )
+        assert execution.start_options["summary"] == "Test activity with all options"

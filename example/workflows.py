@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from temporalio import workflow
 
 from .activities import generate_report
@@ -7,7 +9,8 @@ from .activities import generate_report
 class GenerateReport:
     @workflow.run
     async def run(self):
-        report = await generate_report("Alice", "Hello")
-        # report should become 'Hello, Alice!'. temporalio.workflow.execute_activity
-        # should be called under the hood
+        report = await generate_report.with_options(
+            start_to_close_timeout=timedelta(seconds=30)
+        )("Alice", "Hello")
+        # report will be "Hello, Alice!"
         return report

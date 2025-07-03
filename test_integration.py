@@ -52,6 +52,25 @@ class TestWorkflow:
         return f"{result}|{result2}"
 
 
+# Workflow for testing with_options() functionality
+@workflow.defn()
+class TestWithOptionsWorkflow:
+    @workflow.run
+    async def run(self, user_name: str, action: str) -> str:
+        # Test with_options() with timeout override
+        result = await generate_report.with_options(
+            start_to_close_timeout=timedelta(seconds=30)
+        )(user_name, action)
+
+        # Test with_options().start() with different timeout
+        handle = generate_report.with_options(
+            start_to_close_timeout=timedelta(seconds=45)
+        ).start(user_name, f"{action} with with_options")
+        result2 = await handle
+
+        return f"{result}|{result2}"
+
+
 @pytest_asyncio.fixture
 async def temporal_client():
     """Create a Temporal client for testing."""
@@ -66,7 +85,7 @@ async def temporal_worker(temporal_client):
     async with Worker(
         temporal_client,
         task_queue="test-queue",
-        workflows=[TestWorkflow, TestSingleArgWorkflow],
+        workflows=[TestWorkflow, TestWithOptionsWorkflow, TestSingleArgWorkflow],
         activities=activities_for_queue("test-queue"),
     ) as worker:
         yield worker
@@ -174,3 +193,35 @@ async def test_single_str_activity_with_different_messages(
     )
 
     assert result == "Processed: Test Message|Processed: Test Message again"
+
+
+@pytest.mark.asyncio
+async def test_with_options_functionality_integration(temporal_client, temporal_worker):
+    """Test that with_options() functionality works in real Temporal workflows."""
+    result = await temporal_client.execute_workflow(
+        TestWithOptionsWorkflow.run,
+        args=["David", "OptTest"],
+        id=f"test-opt-workflow-{asyncio.get_event_loop().time()}",
+        task_queue="test-queue",
+    )
+
+    assert result == "OptTest, David!|OptTest with with_options, David!"
+
+
+@pytest.mark.asyncio
+async def test_with_options_with_multiple_timeouts(temporal_client):
+    """Test with_options() with multiple different timeout overrides."""
+    async with Worker(
+        temporal_client,
+        task_queue="test-queue",
+        workflows=[TestWithOptionsWorkflow],
+        activities=activities_for_queue("test-queue"),
+    ):
+        result = await temporal_client.execute_workflow(
+            TestWithOptionsWorkflow.run,
+            args=["Eve", "MultiTimeout"],
+            id=f"test-multi-timeout-workflow-{asyncio.get_event_loop().time()}",
+            task_queue="test-queue",
+        )
+
+        assert result == "MultiTimeout, Eve!|MultiTimeout with with_options, Eve!"
