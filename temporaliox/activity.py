@@ -20,6 +20,7 @@ __all__ = ["decl", "ActivityStub", "activities_for_queue"]
 
 T = TypeVar("T", bound=Callable[..., Any])
 
+_UNPACKING_WRAPPER_ASSIGNMENTS = ("__module__", "__name__", "__qualname__", "__doc__")
 _undefined_activities: defaultdict[str, set[str]] = defaultdict(set)
 _activity_registry: defaultdict[str, list[Callable]] = defaultdict(list)
 
@@ -65,23 +66,7 @@ class ActivityStub:
                 f"declaration signature {self.signature} for activity "
                 f"'{self.name}'"
             )
-        if inspect.iscoroutinefunction(impl_func):
-
-            async def kwargs_unpacking_adapter(kwargs: dict):
-                return await impl_func(**kwargs)
-
-        else:
-
-            def kwargs_unpacking_adapter(kwargs: dict):
-                return impl_func(**kwargs)
-
-        update_wrapper(
-            kwargs_unpacking_adapter,
-            impl_func,
-            assigned=("__module__", "__name__", "__qualname__", "__doc__"),
-        )
-
-        activity_impl = temporal_activity.defn(name=self.name)(kwargs_unpacking_adapter)
+        activity_impl = _make_unary_temporal_activity(impl_func, self.name)
 
         queue_name = self.options["task_queue"]
         _undefined_activities[queue_name].discard(self.name)
@@ -156,3 +141,19 @@ def activities_for_queue(queue_name: str) -> list[Callable]:
         )
 
     return _activity_registry.get(queue_name, [])
+
+
+def _make_unary_temporal_activity(impl_func: Callable, name: str) -> Callable:
+    if inspect.iscoroutinefunction(impl_func):
+
+        async def unpack_kwargs(kwargs: dict):
+            return await impl_func(**kwargs)
+
+    else:
+
+        def unpack_kwargs(kwargs: dict):
+            return impl_func(**kwargs)
+
+    # Do not assign annotations, the wrapper has different signature
+    update_wrapper(unpack_kwargs, impl_func, assigned=_UNPACKING_WRAPPER_ASSIGNMENTS)
+    return temporal_activity.defn(name=name)(unpack_kwargs)
