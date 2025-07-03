@@ -30,10 +30,12 @@ class TestActivityDeclaration:
         assert (
             test_activity.name
             == "TestActivityDeclaration.test_activity_stub_creation.<locals>."
-            + "test_activity"
+            "test_activity"
         )
-        assert test_activity.options["task_queue"] == TEST_QUEUE
-        assert test_activity.options["start_to_close_timeout"] == timedelta(seconds=30)
+        assert test_activity.start_options["task_queue"] == TEST_QUEUE
+        assert test_activity.start_options["start_to_close_timeout"] == timedelta(
+            seconds=30
+        )
 
     def test_activity_stub_preserves_metadata(self):
         """Test that activity stub preserves function metadata in signature."""
@@ -48,7 +50,7 @@ class TestActivityDeclaration:
         assert (
             documented_activity.name
             == "TestActivityDeclaration.test_activity_stub_preserves_metadata."
-            + "<locals>.documented_activity"
+            "<locals>.documented_activity"
         )
         assert documented_activity.signature.parameters["x"].annotation is int
         assert documented_activity.signature.return_annotation is str
@@ -137,6 +139,44 @@ class TestActivityDefinition:
         )  # wraps preserves name
 
 
+class TestDeclarationOptions:
+    def test_defn_with_no_thread_cancel_exception(self):
+        """Test that decl accepts no_thread_cancel_exception parameter."""
+
+        @decl(task_queue=TEST_QUEUE, no_thread_cancel_exception=True)
+        def test_activity(name: str) -> str:
+            pass
+
+        @test_activity.defn
+        def test_activity_impl(name: str) -> str:
+            return f"Hello, {name}!"
+
+        # Should return a callable function
+        assert callable(test_activity_impl)
+        assert test_activity_impl.__name__ == "test_activity_impl"
+
+        # Verify the option is stored in defn_options
+        assert test_activity.defn_options["no_thread_cancel_exception"] is True
+
+    def test_defn_with_default_no_thread_cancel_exception(self):
+        """Test that defn works with default no_thread_cancel_exception=False."""
+
+        @decl(task_queue=TEST_QUEUE)
+        def test_activity(name: str) -> str:
+            pass
+
+        @test_activity.defn
+        def test_activity_impl(name: str) -> str:
+            return f"Hello, {name}!"
+
+        # Should return a callable function
+        assert callable(test_activity_impl)
+        assert test_activity_impl.__name__ == "test_activity_impl"
+
+        # Verify no definition options are set by default
+        assert test_activity.defn_options == {}
+
+
 class TestArgumentConversion:
     def test_args_to_dict_positional(self):
         """Test conversion of positional arguments to dict."""
@@ -183,14 +223,16 @@ class TestActivityOptions:
         def test_activity(name: str) -> str:
             pass
 
-        assert test_activity.options["schedule_to_close_timeout"] == timedelta(
+        assert test_activity.start_options["schedule_to_close_timeout"] == timedelta(
             minutes=5
         )
-        assert test_activity.options["schedule_to_start_timeout"] == timedelta(
+        assert test_activity.start_options["schedule_to_start_timeout"] == timedelta(
             minutes=1
         )
-        assert test_activity.options["start_to_close_timeout"] == timedelta(minutes=4)
-        assert test_activity.options["heartbeat_timeout"] == timedelta(seconds=30)
+        assert test_activity.start_options["start_to_close_timeout"] == timedelta(
+            minutes=4
+        )
+        assert test_activity.start_options["heartbeat_timeout"] == timedelta(seconds=30)
 
     def test_retry_policy(self):
         """Test that retry policy is properly stored."""
@@ -204,7 +246,7 @@ class TestActivityOptions:
         def test_activity(name: str) -> str:
             pass
 
-        assert test_activity.options["retry_policy"] == retry_policy
+        assert test_activity.start_options["retry_policy"] == retry_policy
 
     def test_additional_kwargs(self):
         """Test that additional keyword arguments are passed through."""
@@ -213,8 +255,8 @@ class TestActivityOptions:
         def test_activity(name: str) -> str:
             pass
 
-        assert test_activity.options["custom_option"] == "custom_value"
-        assert test_activity.options["another_option"] == 123
+        assert test_activity.start_options["custom_option"] == "custom_value"
+        assert test_activity.start_options["another_option"] == 123
 
 
 class TestAsyncActivities:
@@ -260,7 +302,7 @@ class TestQualifiedNames:
         assert (
             module_function.name
             == "TestQualifiedNames.test_activity_name_uses_qualname_for_module_"
-            + "functions.<locals>.module_function"
+            "functions.<locals>.module_function"
         )
 
     def test_activity_name_uses_qualname_for_class_methods(self):
@@ -275,7 +317,7 @@ class TestQualifiedNames:
         assert (
             TestClass.class_method.name
             == "TestQualifiedNames.test_activity_name_uses_qualname_for_class_"
-            + "methods.<locals>.TestClass.class_method"
+            "methods.<locals>.TestClass.class_method"
         )
 
     def test_activity_name_for_nested_class_methods(self):
@@ -290,7 +332,7 @@ class TestQualifiedNames:
 
         expected_name = (
             "TestQualifiedNames.test_activity_name_for_nested_class_methods."
-            + "<locals>.OuterClass.InnerClass.nested_method"
+            "<locals>.OuterClass.InnerClass.nested_method"
         )
         assert OuterClass.InnerClass.nested_method.name == expected_name
 
@@ -305,7 +347,7 @@ class TestStringRepresentations:
 
         expected = (
             "TestStringRepresentations.test_str_representation.<locals>."
-            + "simple_activity"
+            "simple_activity"
         )
         assert str(simple_activity) == expected
 
@@ -318,9 +360,9 @@ class TestStringRepresentations:
 
         expected = (
             "ActivityDeclaration(name='TestStringRepresentations."
-            + "test_repr_representation_simple.<locals>.simple_activity', "
-            + "signature=<Signature (name: str) -> str>, "
-            + "options={'task_queue': 'unit-test-queue'})"
+            "test_repr_representation_simple.<locals>.simple_activity', "
+            "signature=<Signature (name: str) -> str>, "
+            "defn_options={}, start_options={'task_queue': 'unit-test-queue'})"
         )
         assert repr(simple_activity) == expected
 
@@ -334,10 +376,10 @@ class TestStringRepresentations:
 
         expected = (
             "ActivityDeclaration(name='TestStringRepresentations."
-            + "test_repr_representation_with_options.<locals>.complex_activity', "
-            + "signature=<Signature (x: int, y: str) -> bool>, "
-            + "options={'task_queue': 'unit-complex-queue', "
-            + "'start_to_close_timeout': datetime.timedelta(seconds=60)})"
+            "test_repr_representation_with_options.<locals>.complex_activity', "
+            "signature=<Signature (x: int, y: str) -> bool>, "
+            "defn_options={}, start_options={'task_queue': 'unit-complex-queue', "
+            "'start_to_close_timeout': datetime.timedelta(seconds=60)})"
         )
         assert repr(complex_activity) == expected
 
@@ -352,7 +394,7 @@ class TestStringRepresentations:
 
         expected = (
             "TestStringRepresentations.test_str_representation_for_class_method."
-            + "<locals>.TestClass.class_activity"
+            "<locals>.TestClass.class_activity"
         )
         assert str(TestClass.class_activity) == expected
 
@@ -365,9 +407,9 @@ class TestStringRepresentations:
 
         expected = (
             "ActivityDeclaration(name='TestStringRepresentations."
-            + "test_repr_representation_preserves_dataclass_format.<locals>."
-            + "test_activity', signature=<Signature () -> None>, "
-            + "options={'task_queue': 'unit-test'})"
+            "test_repr_representation_preserves_dataclass_format.<locals>."
+            "test_activity', signature=<Signature () -> None>, "
+            "defn_options={}, start_options={'task_queue': 'unit-test'})"
         )
         assert repr(test_activity) == expected
 
@@ -408,7 +450,9 @@ class TestActivityRegistry:
         assert activity_name in _undefined_activities["unit-test-registry"]
 
         # Verify the activity stub itself has the correct properties
-        assert registry_test_activity.options["task_queue"] == "unit-test-registry"
+        assert (
+            registry_test_activity.start_options["task_queue"] == "unit-test-registry"
+        )
 
     def test_activity_implementation_registers_in_registry(self):
         """Test that defining an activity implementation updates the registry."""

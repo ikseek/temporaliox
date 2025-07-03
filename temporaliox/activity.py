@@ -29,20 +29,25 @@ _activity_registry: defaultdict[str, list[Callable]] = defaultdict(list)
 class ActivityDeclaration:
     name: str
     signature: inspect.Signature
-    options: dict[str, Any]
+    defn_options: dict[str, Any]
+    start_options: dict[str, Any]
 
     @staticmethod
-    def from_func(
-        func: Callable, task_queue: str, options: dict[str, Any]
+    def create(
+        func: Callable,
+        task_queue: str,
+        start_options: dict[str, Any],
+        defn_options: dict[str, Any],
     ) -> ActivityDeclaration:
         name = func.__qualname__
-        stub = ActivityDeclaration(
+        declaration = ActivityDeclaration(
             name=name,
             signature=inspect.signature(func),
-            options={"task_queue": task_queue, **options},
+            defn_options=defn_options,
+            start_options={"task_queue": task_queue, **start_options},
         )
         _undefined_activities[task_queue].add(name)
-        return stub
+        return declaration
 
     def __str__(self) -> str:
         return self.name
@@ -51,12 +56,8 @@ class ActivityDeclaration:
         return await workflow.execute_activity(
             self.name,
             arg=self._args_to_dict(*args, **kwargs),
-            **self.options,
+            **self.start_options,
         )
-
-    @cached_property
-    def param_names(self) -> tuple[str, ...]:
-        return tuple(self.signature.parameters.keys())
 
     def defn(self, impl_func: T) -> T:
         impl_sig = inspect.signature(impl_func)
@@ -66,9 +67,11 @@ class ActivityDeclaration:
                 f"declaration signature {self.signature} for activity "
                 f"'{self.name}'"
             )
-        activity_impl = _make_unary_temporal_activity(impl_func, self.name)
+        activity_impl = _make_unary_temporal_activity(
+            impl_func, name=self.name, **self.defn_options
+        )
 
-        queue_name = self.options["task_queue"]
+        queue_name = self.start_options["task_queue"]
         _undefined_activities[queue_name].discard(self.name)
         if not _undefined_activities[queue_name]:
             del _undefined_activities[queue_name]
@@ -80,11 +83,15 @@ class ActivityDeclaration:
         return workflow.start_activity(
             self.name,
             arg=self._args_to_dict(*args, **kwargs),
-            **self.options,
+            **self.start_options,
         )
 
+    @cached_property
+    def _param_names(self) -> tuple[str, ...]:
+        return tuple(self.signature.parameters.keys())
+
     def _args_to_dict(self, *args, **kwargs) -> dict[str, Any]:
-        return {**dict(zip(self.param_names, args)), **kwargs}
+        return {**dict(zip(self._param_names, args)), **kwargs}
 
 
 @overload
@@ -102,6 +109,7 @@ def decl(
     versioning_intent: VersioningIntent | None = None,
     summary: str | None = None,
     priority: Priority | None = None,
+    no_thread_cancel_exception: bool = None,
 ) -> Callable[[T], ActivityDeclaration]:
     """
     Declare an activity with Temporal options.
@@ -122,13 +130,21 @@ def decl(
         versioning_intent: Versioning behavior
         summary: Human-readable summary
         priority: Activity priority
+        no_thread_cancel_exception: Whether to disable thread cancellation
     """
     ...
 
 
-def decl(task_queue: str, **activity_options) -> Callable[[T], ActivityDeclaration]:
+def decl(
+    task_queue: str, *, no_thread_cancel_exception=None, **start_options
+) -> Callable[[T], ActivityDeclaration]:
     def decorator(func: T) -> ActivityDeclaration:
-        return ActivityDeclaration.from_func(func, task_queue, activity_options)
+        defn_options = (
+            {}
+            if no_thread_cancel_exception is None
+            else {"no_thread_cancel_exception": no_thread_cancel_exception}
+        )
+        return ActivityDeclaration.create(func, task_queue, start_options, defn_options)
 
     return decorator
 
@@ -143,7 +159,7 @@ def activities_for_queue(queue_name: str) -> list[Callable]:
     return _activity_registry.get(queue_name, [])
 
 
-def _make_unary_temporal_activity(impl_func: Callable, name: str) -> Callable:
+def _make_unary_temporal_activity(impl_func: Callable, **defn_options) -> Callable:
     if inspect.iscoroutinefunction(impl_func):
 
         async def unpack_kwargs(kwargs: dict):
@@ -156,4 +172,4 @@ def _make_unary_temporal_activity(impl_func: Callable, name: str) -> Callable:
 
     # Do not assign annotations, the wrapper has different signature
     update_wrapper(unpack_kwargs, impl_func, assigned=_UNPACKING_WRAPPER_ASSIGNMENTS)
-    return temporal_activity.defn(name=name)(unpack_kwargs)
+    return temporal_activity.defn(**defn_options)(unpack_kwargs)
