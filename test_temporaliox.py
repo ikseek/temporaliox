@@ -10,10 +10,10 @@ from temporaliox.activity import (
 )
 
 # Test constants
-TEST_QUEUE = "test-queue"
-CLASS_QUEUE = "class-queue"
-COMPLEX_QUEUE = "complex-queue"
-SIMPLE_QUEUE = "test"
+TEST_QUEUE = "unit-test-queue"
+CLASS_QUEUE = "unit-class-queue"
+COMPLEX_QUEUE = "unit-complex-queue"
+SIMPLE_QUEUE = "unit-test"
 
 
 class TestActivityDeclaration:
@@ -320,7 +320,7 @@ class TestStringRepresentations:
             "ActivityStub(name='TestStringRepresentations."
             + "test_repr_representation_simple.<locals>.simple_activity', "
             + "signature=<Signature (name: str) -> str>, "
-            + "options={'task_queue': 'test-queue'})"
+            + "options={'task_queue': 'unit-test-queue'})"
         )
         assert repr(simple_activity) == expected
 
@@ -336,7 +336,7 @@ class TestStringRepresentations:
             "ActivityStub(name='TestStringRepresentations."
             + "test_repr_representation_with_options.<locals>.complex_activity', "
             + "signature=<Signature (x: int, y: str) -> bool>, "
-            + "options={'task_queue': 'complex-queue', "
+            + "options={'task_queue': 'unit-complex-queue', "
             + "'start_to_close_timeout': datetime.timedelta(seconds=60)})"
         )
         assert repr(complex_activity) == expected
@@ -367,67 +367,81 @@ class TestStringRepresentations:
             "ActivityStub(name='TestStringRepresentations."
             + "test_repr_representation_preserves_dataclass_format.<locals>."
             + "test_activity', signature=<Signature () -> None>, "
-            + "options={'task_queue': 'test'})"
+            + "options={'task_queue': 'unit-test'})"
         )
         assert repr(test_activity) == expected
 
 
 class TestActivityRegistry:
     def setup_method(self):
-        """Clear the registry before each test."""
+        """Save and clear the registry before each test."""
+        # Save current state
+        self._saved_activity_registry = {k: v.copy() for k, v in _activity_registry.items()}
+        self._saved_undefined_activities = {k: v.copy() for k, v in _undefined_activities.items()}
+        
+        # Clear the registry for the test
         _activity_registry.clear()
         _undefined_activities.clear()
+        
+    def teardown_method(self):
+        """Restore the registry after each test."""
+        _activity_registry.clear()
+        _undefined_activities.clear()
+        
+        # Restore previous state
+        _activity_registry.update(self._saved_activity_registry)
+        _undefined_activities.update(self._saved_undefined_activities)
 
     def test_activity_declaration_registers_in_registry(self):
         """Test that declaring an activity registers it in undefined activities."""
 
-        @decl(task_queue="test-registry")
+        @decl(task_queue="unit-test-registry")
         def registry_test_activity(name: str) -> str:
             pass
 
         activity_name = registry_test_activity.name
-        assert "test-registry" in _undefined_activities
-        assert activity_name in _undefined_activities["test-registry"]
+        assert "unit-test-registry" in _undefined_activities
+        assert activity_name in _undefined_activities["unit-test-registry"]
 
         # Verify the activity stub itself has the correct properties
-        assert registry_test_activity.options["task_queue"] == "test-registry"
+        assert registry_test_activity.options["task_queue"] == "unit-test-registry"
 
     def test_activity_implementation_registers_in_registry(self):
         """Test that defining an activity implementation updates the registry."""
 
-        @decl(task_queue="impl-test")
+        @decl(task_queue="unit-impl-test")
         def impl_test_activity(value: int) -> str:
             pass
 
         activity_name = impl_test_activity.name
         # Should be in undefined activities initially
-        assert "impl-test" in _undefined_activities
-        assert activity_name in _undefined_activities["impl-test"]
+        assert "unit-impl-test" in _undefined_activities
+        assert activity_name in _undefined_activities["unit-impl-test"]
 
         @impl_test_activity.defn
         def impl_test_activity_impl(value: int) -> str:
             return f"Value: {value}"
 
         # Should be removed from undefined activities (queue deleted since empty)
-        assert "impl-test" not in _undefined_activities
+        assert "unit-impl-test" not in _undefined_activities
 
         # Should be in activity registry under the queue
-        assert "impl-test" in _activity_registry
-        assert len(_activity_registry["impl-test"]) == 1
-        assert callable(_activity_registry["impl-test"][0])
+        assert "unit-impl-test" in _activity_registry
+        assert len(_activity_registry["unit-impl-test"]) == 1
+        assert callable(_activity_registry["unit-impl-test"][0])
 
     def test_activities_for_queue_returns_implementations(self):
         """Test that activities_for_queue returns list of implementations."""
 
-        @decl(task_queue="worker-queue")
+        @decl(task_queue="unit-worker-queue")
         def worker_activity_1(x: int) -> int:
             pass
 
-        @decl(task_queue="worker-queue")
+        @decl(task_queue="unit-worker-queue")
         def worker_activity_2(y: str) -> str:
             pass
 
-        @decl(task_queue="other-queue")
+        @decl(task_queue="unit-other-queue")
         def other_activity(z: bool) -> bool:
             pass
 
@@ -445,7 +459,7 @@ class TestActivityRegistry:
             return not z
 
         # Get activities for worker-queue
-        worker_activities = activities_for_queue("worker-queue")
+        worker_activities = activities_for_queue("unit-worker-queue")
         assert len(worker_activities) == 2
 
         # Verify all returned items are callable
@@ -453,22 +467,22 @@ class TestActivityRegistry:
             assert callable(activity)
 
         # Get activities for other-queue
-        other_activities = activities_for_queue("other-queue")
+        other_activities = activities_for_queue("unit-other-queue")
         assert len(other_activities) == 1
         assert callable(other_activities[0])
 
     def test_activities_for_queue_empty_when_no_activities(self):
         """Test that activities_for_queue returns empty list for unknown queue."""
-        assert activities_for_queue("nonexistent-queue") == []
+        assert activities_for_queue("unit-nonexistent-queue") == []
 
     def test_activities_for_queue_raises_when_missing_implementations(self):
         """Test that activities_for_queue raises error for missing implementations."""
 
-        @decl(task_queue="incomplete-queue")
+        @decl(task_queue="unit-incomplete-queue")
         def incomplete_activity_1(a: int) -> int:
             pass
 
-        @decl(task_queue="incomplete-queue")
+        @decl(task_queue="unit-incomplete-queue")
         def incomplete_activity_2(b: str) -> str:
             pass
 
@@ -479,12 +493,12 @@ class TestActivityRegistry:
 
         # Should raise ValueError for missing implementation
         with pytest.raises(ValueError, match="Missing implementations for activities"):
-            activities_for_queue("incomplete-queue")
+            activities_for_queue("unit-incomplete-queue")
 
     def test_activities_for_queue_works_with_single_activity(self):
         """Test activities_for_queue works correctly with single activity."""
 
-        @decl(task_queue="single-queue")
+        @decl(task_queue="unit-single-queue")
         def single_activity(data: str) -> str:
             pass
 
@@ -492,22 +506,22 @@ class TestActivityRegistry:
         def single_activity_impl(data: str) -> str:
             return f"Processed: {data}"
 
-        activities = activities_for_queue("single-queue")
+        activities = activities_for_queue("unit-single-queue")
         assert len(activities) == 1
         assert callable(activities[0])
 
     def test_registry_tracks_multiple_queues(self):
         """Test that registry correctly tracks activities across multiple queues."""
 
-        @decl(task_queue="queue-a")
+        @decl(task_queue="unit-queue-a")
         def activity_a1(x: int) -> int:
             pass
 
-        @decl(task_queue="queue-a")
+        @decl(task_queue="unit-queue-a")
         def activity_a2(y: str) -> str:
             pass
 
-        @decl(task_queue="queue-b")
+        @decl(task_queue="unit-queue-b")
         def activity_b1(z: bool) -> bool:
             pass
 
@@ -525,8 +539,8 @@ class TestActivityRegistry:
             return z
 
         # Check each queue independently
-        queue_a_activities = activities_for_queue("queue-a")
-        queue_b_activities = activities_for_queue("queue-b")
+        queue_a_activities = activities_for_queue("unit-queue-a")
+        queue_b_activities = activities_for_queue("unit-queue-b")
 
         assert len(queue_a_activities) == 2
         assert len(queue_b_activities) == 1
@@ -536,7 +550,7 @@ class TestActivityRegistry:
 
         class ActivityClass:
             @staticmethod
-            @decl(task_queue="class-method-queue")
+            @decl(task_queue="unit-class-method-queue")
             def class_static_activity(value: float) -> float:
                 pass
 
@@ -544,6 +558,6 @@ class TestActivityRegistry:
         def class_static_activity_impl(value: float) -> float:
             return value * 2.0
 
-        activities = activities_for_queue("class-method-queue")
+        activities = activities_for_queue("unit-class-method-queue")
         assert len(activities) == 1
         assert callable(activities[0])

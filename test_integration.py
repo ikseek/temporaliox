@@ -7,7 +7,12 @@ from temporalio import workflow
 from temporalio.client import Client
 from temporalio.worker import Worker
 
-from temporaliox.activity import activities_for_queue, decl
+from temporaliox.activity import (
+    _activity_registry,
+    _undefined_activities,
+    activities_for_queue,
+    decl,
+)
 
 
 # Activity declaration
