@@ -116,19 +116,3 @@ temporal server start-dev
 # Run tests
 pytest
 ```
-
-### Publishing to PyPI
-
-This project uses GitHub Actions for automated publishing to PyPI. To publish a new version:
-
-1. **Set up PyPI trusted publishing** (one-time setup):
-   - Go to your PyPI account settings
-   - Add a new "Trusted Publisher" for this GitHub repository
-   - Set the workflow name to `publish.yml`
-
-2. **Create a release**:
-   - Update the version in `temporaliox/__init__.py`
-   - Create a new GitHub release with a tag (e.g., `v0.2.0`)
-   - The GitHub Action will automatically build and publish to PyPI
-
-The publishing workflow runs tests on multiple Python versions before publishing to ensure compatibility.
