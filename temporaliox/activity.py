@@ -3,7 +3,7 @@ from collections import defaultdict
 from dataclasses import asdict, dataclass, make_dataclass
 from datetime import timedelta
 from functools import cached_property, update_wrapper
-from typing import Any, Callable, TypeVar, overload
+from typing import Any, Callable, Optional, TypeVar, overload
 
 from temporalio import activity as temporal_activity
 from temporalio import workflow
@@ -109,14 +109,14 @@ class ActivityDeclaration:
     def with_options(
         self,
         *,
-        schedule_to_close_timeout: timedelta | None = None,
-        schedule_to_start_timeout: timedelta | None = None,
-        start_to_close_timeout: timedelta | None = None,
-        heartbeat_timeout: timedelta | None = None,
-        retry_policy: RetryPolicy | None = None,
+        schedule_to_close_timeout: Optional[timedelta] = None,
+        schedule_to_start_timeout: Optional[timedelta] = None,
+        start_to_close_timeout: Optional[timedelta] = None,
+        heartbeat_timeout: Optional[timedelta] = None,
+        retry_policy: Optional[RetryPolicy] = None,
         cancellation_type: ActivityCancellationType = None,
-        summary: str | None = None,
-        priority: Priority | None = None,
+        summary: Optional[str] = None,
+        priority: Optional[Priority] = None,
     ) -> ActivityExecution:
         """
         Create an ActivityExecution with custom runtime options.
@@ -171,8 +171,8 @@ class ActivityDeclaration:
             "arg_type",  # The actual class name
             field_definitions,
             frozen=True,
-            module=self.__module__,
         )
+        cls.__module__ = self.__module__
         cls.__qualname__ = f"{self.name}.{cls.__name__}"
         return cls
 
@@ -181,14 +181,14 @@ class ActivityDeclaration:
 def decl(
     *,
     task_queue: str,
-    result_type: type | None = None,
-    schedule_to_close_timeout: timedelta | None = None,
-    schedule_to_start_timeout: timedelta | None = None,
-    start_to_close_timeout: timedelta | None = None,
-    heartbeat_timeout: timedelta | None = None,
-    retry_policy: RetryPolicy | None = None,
+    result_type: Optional[type] = None,
+    schedule_to_close_timeout: Optional[timedelta] = None,
+    schedule_to_start_timeout: Optional[timedelta] = None,
+    start_to_close_timeout: Optional[timedelta] = None,
+    heartbeat_timeout: Optional[timedelta] = None,
+    retry_policy: Optional[RetryPolicy] = None,
     cancellation_type: ActivityCancellationType = None,
-    priority: Priority | None = None,
+    priority: Optional[Priority] = None,
     no_thread_cancel_exception: bool = None,
 ) -> Callable[[T], ActivityDeclaration]:
     """
