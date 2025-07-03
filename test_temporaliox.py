@@ -56,6 +56,54 @@ class TestActivityDeclaration:
         assert documented_activity.signature.parameters["x"].annotation is int
         assert documented_activity.signature.return_annotation is str
 
+    def test_activity_arg_type_generation(self):
+        """Test that activity declaration generates proper arg_type dataclass."""
+
+        @decl(task_queue=TEST_QUEUE)
+        def test_activity(name: str, value: int, active: bool = True) -> str:
+            pass
+
+        # Check arg_type is generated
+        arg_type = test_activity.arg_type
+
+        # Check the class name is "arg_type"
+        assert arg_type.__name__ == "arg_type"
+
+        # The qualname should be the full activity name + .arg_type
+        assert arg_type.__qualname__ == (
+            "TestActivityDeclaration.test_activity_arg_type_generation."
+            "<locals>.test_activity.arg_type"
+        )
+
+        # Verify the qualname construction uses the class name correctly
+        assert arg_type.__qualname__.endswith(".arg_type")
+
+        # Check it's a dataclass
+        assert hasattr(arg_type, "__dataclass_fields__")
+
+        # Check fields
+        from dataclasses import fields
+
+        dataclass_fields = fields(arg_type)
+        field_names = [f.name for f in dataclass_fields]
+        assert field_names == ["name", "value", "active"]
+
+        # Check field types and defaults
+        name_field = next(f for f in dataclass_fields if f.name == "name")
+        value_field = next(f for f in dataclass_fields if f.name == "value")
+        active_field = next(f for f in dataclass_fields if f.name == "active")
+
+        assert name_field.type is str
+        assert value_field.type is int
+        assert active_field.type is bool
+        assert active_field.default is True
+
+        # Test creating instance
+        args = arg_type(name="test", value=42)
+        assert args.name == "test"
+        assert args.value == 42
+        assert args.active is True  # default value
+
 
 class TestActivityDefinition:
     def test_defn_with_matching_signature(self):
@@ -361,9 +409,7 @@ class TestStringRepresentations:
             pass
 
         expected = (
-            "ActivityDeclaration(name='TestStringRepresentations."
-            "test_repr_representation_simple.<locals>.simple_activity', "
-            "signature=<Signature (name: str) -> str>, "
+            "ActivityDeclaration(signature=<Signature (name: str) -> str>, "
             "defn_options={}, start_options={'task_queue': 'unit-test-queue'})"
         )
         assert repr(simple_activity) == expected
@@ -377,9 +423,7 @@ class TestStringRepresentations:
             pass
 
         expected = (
-            "ActivityDeclaration(name='TestStringRepresentations."
-            "test_repr_representation_with_options.<locals>.complex_activity', "
-            "signature=<Signature (x: int, y: str) -> bool>, "
+            "ActivityDeclaration(signature=<Signature (x: int, y: str) -> bool>, "
             "defn_options={}, start_options={'task_queue': 'unit-complex-queue', "
             "'start_to_close_timeout': datetime.timedelta(seconds=60)})"
         )
@@ -408,9 +452,7 @@ class TestStringRepresentations:
             pass
 
         expected = (
-            "ActivityDeclaration(name='TestStringRepresentations."
-            "test_repr_representation_preserves_dataclass_format.<locals>."
-            "test_activity', signature=<Signature () -> None>, "
+            "ActivityDeclaration(signature=<Signature () -> None>, "
             "defn_options={}, start_options={'task_queue': 'unit-test'})"
         )
         assert repr(test_activity) == expected

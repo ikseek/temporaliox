@@ -1,8 +1,6 @@
-from __future__ import annotations
-
 import inspect
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, make_dataclass
 from datetime import timedelta
 from functools import cached_property, update_wrapper
 from typing import Any, Callable, TypeVar, overload
@@ -19,14 +17,44 @@ __all__ = ["decl", "ActivityDeclaration", "ActivityExecution", "activities_for_q
 
 T = TypeVar("T", bound=Callable[..., Any])
 
-_UNPACKING_WRAPPER_ASSIGNMENTS = ("__module__", "__name__", "__qualname__", "__doc__")
 _undefined_activities: defaultdict[str, set[str]] = defaultdict(set)
 _activity_registry: defaultdict[str, list[Callable]] = defaultdict(list)
 
 
 @dataclass(frozen=True)
-class ActivityDeclaration:
+class ActivityExecution:
     name: str
+    param_names: tuple[str, ...]
+    arg_type: type
+    start_options: dict[str, Any]
+
+    async def __call__(self, *args, **kwargs):
+        return await workflow.execute_activity(
+            self.name,
+            arg=self._args_to_dataclass(*args, **kwargs),
+            **self.start_options,
+        )
+
+    def start(self, *args, **kwargs) -> ActivityHandle:
+        return workflow.start_activity(
+            self.name,
+            arg=self._args_to_dataclass(*args, **kwargs),
+            **self.start_options,
+        )
+
+    def _args_to_dataclass(self, *args, **kwargs):
+        """Convert args/kwargs to a dataclass instance."""
+        # Combine positional and keyword arguments
+        all_kwargs = {**dict(zip(self.param_names, args)), **kwargs}
+        return self.arg_type(**all_kwargs)
+
+    def _args_to_dict(self, *args, **kwargs) -> dict[str, Any]:
+        """Legacy method for backward compatibility."""
+        return {**dict(zip(self.param_names, args)), **kwargs}
+
+
+@dataclass()
+class ActivityDeclaration:
     signature: inspect.Signature
     defn_options: dict[str, Any]
     start_options: dict[str, Any]
@@ -37,21 +65,24 @@ class ActivityDeclaration:
     async def __call__(self, *args, **kwargs):
         return await self.with_options()(*args, **kwargs)
 
+    @property
+    def name(self) -> str:
+        return self.__qualname__
+
     @staticmethod
     def create(
         func: Callable,
         task_queue: str,
         start_options: dict[str, Any],
         defn_options: dict[str, Any],
-    ) -> ActivityDeclaration:
-        name = func.__qualname__
+    ) -> "ActivityDeclaration":
         declaration = ActivityDeclaration(
-            name=name,
             signature=inspect.signature(func),
             defn_options=defn_options,
             start_options={"task_queue": task_queue, **start_options},
         )
-        _undefined_activities[task_queue].add(name)
+        update_wrapper(declaration, func)
+        _undefined_activities[task_queue].add(declaration.name)
         return declaration
 
     def defn(self, impl_func: T) -> T:
@@ -63,7 +94,7 @@ class ActivityDeclaration:
                 f"'{self.name}'"
             )
         activity_impl = _make_unary_temporal_activity(
-            impl_func, name=self.name, **self.defn_options
+            impl_func, arg_type=self.arg_type, name=self.name, **self.defn_options
         )
 
         queue_name = self.start_options["task_queue"]
@@ -112,6 +143,7 @@ class ActivityDeclaration:
         return ActivityExecution(
             name=self.name,
             param_names=self._param_names,
+            arg_type=self.arg_type,
             start_options={**self.start_options, **overrides},
         )
 
@@ -122,29 +154,27 @@ class ActivityDeclaration:
     def _param_names(self) -> tuple[str, ...]:
         return tuple(self.signature.parameters.keys())
 
+    @cached_property
+    def arg_type(self) -> type:
+        """Generate a dataclass type for activity arguments."""
+        field_definitions = []
+        for param_name, param in self.signature.parameters.items():
+            param_type = (
+                param.annotation if param.annotation != inspect.Parameter.empty else Any
+            )
 
-@dataclass(frozen=True)
-class ActivityExecution:
-    name: str
-    param_names: tuple[str, ...]
-    start_options: dict[str, Any]
-
-    async def __call__(self, *args, **kwargs):
-        return await workflow.execute_activity(
-            self.name,
-            arg=self._args_to_dict(*args, **kwargs),
-            **self.start_options,
+            if param.default != inspect.Parameter.empty:
+                field_definitions.append((param_name, param_type, param.default))
+            else:
+                field_definitions.append((param_name, param_type))
+        cls = make_dataclass(
+            "arg_type",  # The actual class name
+            field_definitions,
+            frozen=True,
+            module=self.__module__,
         )
-
-    def start(self, *args, **kwargs) -> ActivityHandle:
-        return workflow.start_activity(
-            self.name,
-            arg=self._args_to_dict(*args, **kwargs),
-            **self.start_options,
-        )
-
-    def _args_to_dict(self, *args, **kwargs) -> dict[str, Any]:
-        return {**dict(zip(self.param_names, args)), **kwargs}
+        cls.__qualname__ = f"{self.name}.{cls.__name__}"
+        return cls
 
 
 @overload
@@ -209,17 +239,23 @@ def activities_for_queue(queue_name: str) -> list[Callable]:
     return _activity_registry.get(queue_name, [])
 
 
-def _make_unary_temporal_activity(impl_func: Callable, **defn_options) -> Callable:
+def _make_unary_temporal_activity(
+    impl_func: Callable, arg_type: type, **defn_options
+) -> Callable:
     if inspect.iscoroutinefunction(impl_func):
 
-        async def unpack_kwargs(kwargs: dict):
-            return await impl_func(**kwargs)
+        # no need to apply @wraps because we change the signature
+        async def unpack_dataclass_to_kwargs(arg: arg_type):
+            # Convert dataclass instance to kwargs
+            return await impl_func(**asdict(arg))
 
     else:
 
-        def unpack_kwargs(kwargs: dict):
-            return impl_func(**kwargs)
+        def unpack_dataclass_to_kwargs(arg: arg_type):
+            return impl_func(**asdict(arg))
 
-    # Do not assign annotations, the wrapper has different signature
-    update_wrapper(unpack_kwargs, impl_func, assigned=_UNPACKING_WRAPPER_ASSIGNMENTS)
-    return temporal_activity.defn(**defn_options)(unpack_kwargs)
+    unpack_dataclass_to_kwargs.__name__ = impl_func.__name__
+    unpack_dataclass_to_kwargs.__qualname__ = impl_func.__qualname__
+    unpack_dataclass_to_kwargs.__module__ = impl_func.__module__
+
+    return temporal_activity.defn(**defn_options)(unpack_dataclass_to_kwargs)
