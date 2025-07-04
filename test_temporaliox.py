@@ -819,6 +819,151 @@ class TestWithOptionsMethod:
         assert execution1 is not execution3
 
 
+class TestDataclassPreservation:
+    def test_defn_preserves_nested_dataclasses(self):
+        """Test that nested dataclasses are preserved when passed to implementation."""
+        from dataclasses import dataclass
+
+        @dataclass
+        class Address:
+            street: str
+            city: str
+
+        @dataclass
+        class Person:
+            name: str
+            age: int
+            address: Address
+
+        @decl(task_queue=TEST_QUEUE)
+        def process_person(person: Person) -> str:
+            pass
+
+        # Store what the implementation receives
+        received_args = {}
+
+        @process_person.defn
+        def process_person_impl(person: Person) -> str:
+            received_args["person"] = person
+            received_args["person_type"] = type(person)
+            received_args["address_type"] = type(person.address)
+            return (
+                f"{person.name} lives at {person.address.street}, {person.address.city}"
+            )
+
+        # Create test data
+        test_address = Address(street="123 Main St", city="Anytown")
+        test_person = Person(name="Alice", age=30, address=test_address)
+
+        # Create an instance of the generated arg_type
+        arg_instance = process_person.arg_type(person=test_person)
+
+        # Call the wrapper
+        result = process_person_impl(arg_instance)
+
+        # Verify dataclasses are preserved
+        assert received_args["person_type"] is Person
+        assert received_args["address_type"] is Address
+        assert result == "Alice lives at 123 Main St, Anytown"
+
+    def test_defn_with_complex_nested_dataclasses(self):
+        """Test that complex nested dataclasses with lists are handled correctly."""
+        from dataclasses import dataclass, fields
+        from typing import Optional
+
+        @dataclass
+        class Item:
+            id: int
+            name: str
+            price: float
+
+        @dataclass
+        class Order:
+            order_id: str
+            items: list[Item]
+            discount: Optional[float] = None
+
+        @decl(task_queue=TEST_QUEUE)
+        def process_order(order: Order) -> str:
+            pass
+
+        # Verify the arg_type structure
+        arg_type = process_order.arg_type
+        arg_fields = {f.name: f for f in fields(arg_type)}
+
+        # The arg_type should have an 'order' field of type Order
+        assert "order" in arg_fields
+        assert arg_fields["order"].type == Order
+
+        # Create test data
+        items = [
+            Item(id=1, name="Widget", price=9.99),
+            Item(id=2, name="Gadget", price=19.99),
+        ]
+        test_order = Order(order_id="ORD-123", items=items, discount=0.1)
+
+        # The arg_type instance preserves the Order type
+        arg_instance = arg_type(order=test_order)
+        assert isinstance(arg_instance.order, Order)
+        assert all(isinstance(item, Item) for item in arg_instance.order.items)
+
+        # Verify the implementation receives preserved dataclasses
+        received_order = None
+
+        @process_order.defn
+        def process_order_impl(order: Order) -> str:
+            nonlocal received_order
+            received_order = order
+            total = sum(item.price for item in order.items)
+            if order.discount:
+                total *= 1 - order.discount
+            return f"Order {order.order_id}: ${total:.2f}"
+
+        # Call the implementation
+        result = process_order_impl(arg_instance)
+
+        # Verify the implementation received the Order instance with Item instances
+        assert isinstance(received_order, Order)
+        assert all(isinstance(item, Item) for item in received_order.items)
+        assert result == "Order ORD-123: $26.98"
+
+    def test_defn_with_dataclass_field_preservation(self):
+        """Test that the generated arg_type properly preserves dataclass fields."""
+        from dataclasses import dataclass, fields
+
+        @dataclass
+        class Config:
+            timeout: int
+            retries: int
+
+        @decl(task_queue=TEST_QUEUE)
+        def configure_system(name: str, config: Config) -> str:
+            pass
+
+        # Check the generated arg_type
+        arg_type = configure_system.arg_type
+        arg_fields = fields(arg_type)
+
+        # Should have two fields: name and config
+        assert len(arg_fields) == 2
+        field_names = [f.name for f in arg_fields]
+        assert "name" in field_names
+        assert "config" in field_names
+
+        # The config field should have Config as its type
+        config_field = next(f for f in arg_fields if f.name == "config")
+        assert config_field.type == Config
+
+        # Create test instance
+        test_config = Config(timeout=30, retries=3)
+        arg_instance = arg_type(name="test", config=test_config)
+
+        # The arg_type instance should preserve the Config instance
+        assert isinstance(arg_instance.config, Config)
+        assert arg_instance.config.timeout == 30
+        assert arg_instance.config.retries == 3
+
+
 class TestActivityDeclarationDelegation:
     def test_declaration_call_delegates_to_with_options(self):
         """Test that ActivityDeclaration.__call__ delegates to with_options()."""

@@ -1,6 +1,6 @@
 import inspect
 from collections import defaultdict
-from dataclasses import asdict, dataclass, make_dataclass
+from dataclasses import dataclass, make_dataclass
 from datetime import timedelta
 from functools import cached_property, update_wrapper
 from typing import Any, Callable, Optional, TypeVar, overload
@@ -246,13 +246,14 @@ def _make_unary_temporal_activity(
 
         # no need to apply @wraps because we change the signature
         async def unpack_dataclass_to_kwargs(arg: arg_type):
-            # Convert dataclass instance to kwargs
-            return await impl_func(**asdict(arg))
+            # Convert dataclass into args dict, non-recursively
+            return await impl_func(**vars(arg))
 
     else:
 
         def unpack_dataclass_to_kwargs(arg: arg_type):
-            return impl_func(**asdict(arg))
+            # Convert dataclass into args dict, non-recursively
+            return impl_func(**vars(arg))
 
     unpack_dataclass_to_kwargs.__name__ = impl_func.__name__
     unpack_dataclass_to_kwargs.__qualname__ = impl_func.__qualname__
