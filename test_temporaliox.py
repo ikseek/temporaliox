@@ -399,7 +399,13 @@ class TestStringRepresentations:
             "TestStringRepresentations.test_str_representation.<locals>."
             "simple_activity"
         )
+        expected_arg_type = (
+            "<class 'test_temporaliox."
+            "TestStringRepresentations.test_str_representation.<locals>."
+            "simple_activity.arg_type'>"
+        )
         assert str(simple_activity) == expected
+        assert str(simple_activity.arg_type) == expected_arg_type
 
     def test_repr_representation_simple(self):
         """Test __repr__ method shows full details for simple case."""

@@ -1,6 +1,6 @@
 import inspect
 from collections import defaultdict
-from dataclasses import dataclass, make_dataclass
+from dataclasses import dataclass, field, make_dataclass
 from datetime import timedelta
 from functools import cached_property, update_wrapper
 from typing import Any, Callable, Optional, TypeVar, overload
@@ -58,6 +58,7 @@ class ActivityDeclaration:
     signature: inspect.Signature
     defn_options: dict[str, Any]
     start_options: dict[str, Any]
+    arg_type: type = field(repr=False)
 
     def __str__(self) -> str:
         return self.name
@@ -76,10 +77,12 @@ class ActivityDeclaration:
         start_options: dict[str, Any],
         defn_options: dict[str, Any],
     ) -> "ActivityDeclaration":
+        sig = inspect.signature(func)
         declaration = ActivityDeclaration(
-            signature=inspect.signature(func),
+            signature=sig,
             defn_options=defn_options,
             start_options={"task_queue": task_queue, **start_options},
+            arg_type=_make_arg_type(sig, func.__qualname__, func.__module__),
         )
         update_wrapper(declaration, func)
         _undefined_activities[task_queue].add(declaration.name)
@@ -154,28 +157,6 @@ class ActivityDeclaration:
     def _param_names(self) -> tuple[str, ...]:
         return tuple(self.signature.parameters.keys())
 
-    @cached_property
-    def arg_type(self) -> type:
-        """Generate a dataclass type for activity arguments."""
-        field_definitions = []
-        for param_name, param in self.signature.parameters.items():
-            param_type = (
-                param.annotation if param.annotation != inspect.Parameter.empty else Any
-            )
-
-            if param.default != inspect.Parameter.empty:
-                field_definitions.append((param_name, param_type, param.default))
-            else:
-                field_definitions.append((param_name, param_type))
-        cls = make_dataclass(
-            "arg_type",  # The actual class name
-            field_definitions,
-            frozen=True,
-        )
-        cls.__module__ = self.__module__
-        cls.__qualname__ = f"{self.name}.{cls.__name__}"
-        return cls
-
 
 @overload
 def decl(
@@ -237,6 +218,28 @@ def activities_for_queue(queue_name: str) -> list[Callable]:
         )
 
     return _activity_registry.get(queue_name, [])
+
+
+def _make_arg_type(signature: inspect.Signature, name: str, module: str) -> type:
+    """Generate a dataclass type for activity arguments from a signature."""
+    field_definitions = []
+    for param_name, param in signature.parameters.items():
+        param_type = (
+            param.annotation if param.annotation != inspect.Parameter.empty else Any
+        )
+
+        if param.default != inspect.Parameter.empty:
+            field_definitions.append((param_name, param_type, param.default))
+        else:
+            field_definitions.append((param_name, param_type))
+    cls = make_dataclass(
+        "arg_type",  # The actual class name
+        field_definitions,
+        frozen=True,
+    )
+    cls.__module__ = module
+    cls.__qualname__ = f"{name}.{cls.__name__}"
+    return cls
 
 
 def _make_unary_temporal_activity(
