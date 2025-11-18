@@ -48,11 +48,6 @@ class ActivityExecution:
         all_kwargs = {**dict(zip(param_names, args)), **kwargs}
         return self.arg_type(**all_kwargs)
 
-    def _args_to_dict(self, *args, **kwargs) -> dict[str, Any]:
-        """Legacy method for backward compatibility."""
-        param_names = (f.name for f in fields(self.arg_type))
-        return {**dict(zip(param_names, args)), **kwargs}
-
 
 @dataclass()
 class ActivityDeclaration:

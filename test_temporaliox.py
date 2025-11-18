@@ -227,36 +227,39 @@ class TestDeclarationOptions:
 
 
 class TestArgumentConversion:
-    def test_args_to_dict_positional(self):
-        """Test conversion of positional arguments to dict via ActivityExecution."""
+    def test_args_to_dataclass_positional(self):
+        """Test conversion of positional arguments to dataclass."""
 
         @decl(task_queue=TEST_QUEUE)
         def test_activity(name: str, value: int) -> str:
             pass
 
         execution = test_activity.with_options()
-        args_dict = execution._args_to_dict("Bob", 42)
-        assert args_dict == {"name": "Bob", "value": 42}
+        args_dc = execution._args_to_dataclass("Bob", 42)
+        assert args_dc.name == "Bob"
+        assert args_dc.value == 42
 
-    def test_args_to_dict_mixed(self):
+    def test_args_to_dataclass_mixed(self):
         @decl(task_queue=TEST_QUEUE)
         def test_activity(name: str, value: int) -> str:
             pass
 
         execution = test_activity.with_options()
-        args_dict = execution._args_to_dict("Bob", value=42)
-        assert args_dict == {"name": "Bob", "value": 42}
+        args_dc = execution._args_to_dataclass("Bob", value=42)
+        assert args_dc.name == "Bob"
+        assert args_dc.value == 42
 
-    def test_args_to_dict_all_kwargs(self):
-        """Test conversion of all keyword arguments via ActivityExecution."""
+    def test_args_to_dataclass_all_kwargs(self):
+        """Test conversion of all keyword arguments to dataclass."""
 
         @decl(task_queue=TEST_QUEUE)
         def test_activity(name: str, value: int) -> str:
             pass
 
         execution = test_activity.with_options()
-        args_dict = execution._args_to_dict(name="Bob", value=42)
-        assert args_dict == {"name": "Bob", "value": 42}
+        args_dc = execution._args_to_dataclass(name="Bob", value=42)
+        assert args_dc.name == "Bob"
+        assert args_dc.value == 42
 
 
 class TestActivityOptions:
@@ -678,8 +681,8 @@ class TestActivityExecution:
             seconds=30
         )
 
-    def test_activity_execution_args_to_dict(self):
-        """Test ActivityExecution._args_to_dict method."""
+    def test_activity_execution_args_to_dataclass(self):
+        """Test ActivityExecution._args_to_dataclass method."""
 
         @decl(task_queue=TEST_QUEUE)
         def test_activity(name: str, value: int, flag: bool) -> str:
@@ -688,16 +691,22 @@ class TestActivityExecution:
         execution = test_activity.with_options()
 
         # Test positional args
-        result = execution._args_to_dict("Alice", 42, True)
-        assert result == {"name": "Alice", "value": 42, "flag": True}
+        result = execution._args_to_dataclass("Alice", 42, True)
+        assert result.name == "Alice"
+        assert result.value == 42
+        assert result.flag is True
 
         # Test mixed args
-        result = execution._args_to_dict("Bob", value=99, flag=False)
-        assert result == {"name": "Bob", "value": 99, "flag": False}
+        result = execution._args_to_dataclass("Bob", value=99, flag=False)
+        assert result.name == "Bob"
+        assert result.value == 99
+        assert result.flag is False
 
         # Test all kwargs
-        result = execution._args_to_dict(name="Charlie", value=0, flag=True)
-        assert result == {"name": "Charlie", "value": 0, "flag": True}
+        result = execution._args_to_dataclass(value=0, flag=True, name="Charlie")
+        assert result.name == "Charlie"
+        assert result.value == 0
+        assert result.flag is True
 
     def test_activity_execution_has_callable_interface(self):
         """Test that ActivityExecution has __call__ and start methods."""
@@ -1043,11 +1052,12 @@ class TestWithOptionsIntegration:
         # Verify it has the expected interface
         assert callable(execution)
         assert hasattr(execution, "start")
-        assert hasattr(execution, "_args_to_dict")
+        assert hasattr(execution, "_args_to_dataclass")
 
         # Test argument conversion works in the chain
-        args_dict = execution._args_to_dict("test", 42)
-        assert args_dict == {"name": "test", "value": 42}
+        args_dc = execution._args_to_dataclass("test", 42)
+        assert args_dc.name == "test"
+        assert args_dc.value == 42
 
     def test_with_options_with_all_temporal_options(self):
         """Test with_options() with all supported Temporal options."""
