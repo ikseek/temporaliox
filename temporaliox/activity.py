@@ -74,10 +74,13 @@ class ActivityDeclaration:
         defn_options: dict[str, Any],
     ) -> "ActivityDeclaration":
         sig = inspect.signature(func)
+        start_options.setdefault("task_queue", task_queue)
+        if sig.return_annotation is not None:
+            start_options.setdefault("result_type", sig.return_annotation)
         declaration = ActivityDeclaration(
             signature=sig,
             defn_options=defn_options,
-            start_options={"task_queue": task_queue, **start_options},
+            start_options=start_options,
             arg_type=_make_arg_type(sig, func.__qualname__, func.__module__),
         )
         update_wrapper(declaration, func)

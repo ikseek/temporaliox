@@ -419,7 +419,8 @@ class TestStringRepresentations:
 
         expected = (
             "ActivityDeclaration(signature=<Signature (name: str) -> str>, "
-            "defn_options={}, start_options={'task_queue': 'unit-test-queue'})"
+            "defn_options={}, start_options={'task_queue': 'unit-test-queue', "
+            "'result_type': <class 'str'>})"
         )
         assert repr(simple_activity) == expected
 
@@ -433,8 +434,9 @@ class TestStringRepresentations:
 
         expected = (
             "ActivityDeclaration(signature=<Signature (x: int, y: str) -> bool>, "
-            "defn_options={}, start_options={'task_queue': 'unit-complex-queue', "
-            "'start_to_close_timeout': datetime.timedelta(seconds=60)})"
+            "defn_options={}, start_options={"
+            "'start_to_close_timeout': datetime.timedelta(seconds=60), "
+            "'task_queue': 'unit-complex-queue', 'result_type': <class 'bool'>})"
         )
         assert repr(complex_activity) == expected
 
