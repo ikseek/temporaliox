@@ -174,7 +174,7 @@ def decl(
 
     Declaration-time options (set defaults for all executions):
         task_queue: Task queue name for the activity (required)
-        result_type: Expected return type (for type hints only, no runtime effect)
+        result_type: Expected return type, used for type hints and deserialization
         schedule_to_close_timeout: Default maximum time from scheduling to completion
         schedule_to_start_timeout: Default maximum time from scheduling to start
         start_to_close_timeout: Default maximum time for a single execution attempt
