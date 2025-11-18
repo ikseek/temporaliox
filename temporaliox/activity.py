@@ -1,8 +1,8 @@
 import inspect
 from collections import defaultdict
-from dataclasses import dataclass, field, make_dataclass
+from dataclasses import dataclass, field, fields, make_dataclass
 from datetime import timedelta
-from functools import cached_property, update_wrapper
+from functools import update_wrapper
 from typing import Any, Callable, Optional, TypeVar, overload
 
 from temporalio import activity as temporal_activity
@@ -24,7 +24,6 @@ _activity_registry: defaultdict[str, list[Callable]] = defaultdict(list)
 @dataclass(frozen=True)
 class ActivityExecution:
     name: str
-    param_names: tuple[str, ...]
     arg_type: type
     start_options: dict[str, Any]
 
@@ -45,12 +44,14 @@ class ActivityExecution:
     def _args_to_dataclass(self, *args, **kwargs):
         """Convert args/kwargs to a dataclass instance."""
         # Combine positional and keyword arguments
-        all_kwargs = {**dict(zip(self.param_names, args)), **kwargs}
+        param_names = (f.name for f in fields(self.arg_type))
+        all_kwargs = {**dict(zip(param_names, args)), **kwargs}
         return self.arg_type(**all_kwargs)
 
     def _args_to_dict(self, *args, **kwargs) -> dict[str, Any]:
         """Legacy method for backward compatibility."""
-        return {**dict(zip(self.param_names, args)), **kwargs}
+        param_names = (f.name for f in fields(self.arg_type))
+        return {**dict(zip(param_names, args)), **kwargs}
 
 
 @dataclass()
@@ -145,17 +146,12 @@ class ActivityDeclaration:
     def with_options(self, **overrides) -> ActivityExecution:
         return ActivityExecution(
             name=self.name,
-            param_names=self._param_names,
             arg_type=self.arg_type,
             start_options={**self.start_options, **overrides},
         )
 
     def start(self, *args, **kwargs) -> ActivityHandle:
         return self.with_options().start(*args, **kwargs)
-
-    @cached_property
-    def _param_names(self) -> tuple[str, ...]:
-        return tuple(self.signature.parameters.keys())
 
 
 @overload

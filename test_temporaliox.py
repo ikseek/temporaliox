@@ -673,7 +673,6 @@ class TestActivityExecution:
 
         assert isinstance(execution, ActivityExecution)
         assert execution.name == test_activity.name
-        assert execution.param_names == ("name", "value")
         assert execution.start_options["task_queue"] == TEST_QUEUE
         assert execution.start_options["start_to_close_timeout"] == timedelta(
             seconds=30
@@ -793,6 +792,7 @@ class TestWithOptionsMethod:
 
     def test_with_options_preserves_name_and_params(self):
         """Test that with_options() preserves activity name and parameter names."""
+        from dataclasses import fields
 
         @decl(task_queue=TEST_QUEUE)
         def complex_activity(user_id: int, action: str, metadata: dict) -> str:
@@ -803,7 +803,11 @@ class TestWithOptionsMethod:
         )
 
         assert execution.name == complex_activity.name
-        assert execution.param_names == ("user_id", "action", "metadata")
+        assert tuple(f.name for f in fields(execution.arg_type)) == (
+            "user_id",
+            "action",
+            "metadata",
+        )
 
     def test_with_options_returns_new_instance_each_time(self):
         @decl(task_queue=TEST_QUEUE, start_to_close_timeout=timedelta(seconds=60))
