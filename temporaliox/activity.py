@@ -3,7 +3,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field, fields, make_dataclass
 from datetime import timedelta
 from functools import update_wrapper
-from typing import Any, Callable, Optional, TypeVar, overload
+from typing import Any, Callable, Generic, Optional, TypeVar, overload
 
 from temporalio import activity as temporal_activity
 from temporalio import workflow
@@ -12,29 +12,32 @@ from temporalio.workflow import (
     ActivityCancellationType,
     ActivityHandle,
 )
+from typing_extensions import ParamSpec
 
 __all__ = ["decl", "ActivityDeclaration", "ActivityExecution", "activities_for_queue"]
 
-T = TypeVar("T", bound=Callable[..., Any])
+P = ParamSpec("P")
+R = TypeVar("R")
+
 
 _undefined_activities: defaultdict[str, set[str]] = defaultdict(set)
 _activity_registry: defaultdict[str, list[Callable]] = defaultdict(list)
 
 
 @dataclass(frozen=True)
-class ActivityExecution:
+class ActivityExecution(Generic[P, R]):
     name: str
     arg_type: type
     start_options: dict[str, Any]
 
-    async def __call__(self, *args, **kwargs):
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         return await workflow.execute_activity(
             self.name,
             arg=self._args_to_dataclass(*args, **kwargs),
             **self.start_options,
         )
 
-    def start(self, *args, **kwargs) -> ActivityHandle:
+    def start(self, *args: P.args, **kwargs: P.kwargs) -> ActivityHandle[R]:
         return workflow.start_activity(
             self.name,
             arg=self._args_to_dataclass(*args, **kwargs),
@@ -50,7 +53,7 @@ class ActivityExecution:
 
 
 @dataclass()
-class ActivityDeclaration:
+class ActivityDeclaration(Generic[P, R]):
     signature: inspect.Signature
     defn_options: dict[str, Any]
     start_options: dict[str, Any]
@@ -68,11 +71,11 @@ class ActivityDeclaration:
 
     @staticmethod
     def create(
-        func: Callable,
+        func: Callable[P, R],
         task_queue: str,
         start_options: dict[str, Any],
         defn_options: dict[str, Any],
-    ) -> "ActivityDeclaration":
+    ) -> "ActivityDeclaration[P, R]":
         sig = inspect.signature(func)
         start_options.setdefault("task_queue", task_queue)
         if sig.return_annotation is not None:
@@ -87,7 +90,7 @@ class ActivityDeclaration:
         _undefined_activities[task_queue].add(declaration.name)
         return declaration
 
-    def defn(self, impl_func: T) -> T:
+    def defn(self, impl_func: Callable[P, R]) -> Callable[P, R]:
         impl_sig = inspect.signature(impl_func)
         if impl_sig != self.signature:
             raise ValueError(
@@ -119,7 +122,7 @@ class ActivityDeclaration:
         cancellation_type: ActivityCancellationType = None,
         summary: Optional[str] = None,
         priority: Optional[Priority] = None,
-    ) -> ActivityExecution:
+    ) -> ActivityExecution[P, R]:
         """
         Create an ActivityExecution with custom runtime options.
 
@@ -141,14 +144,14 @@ class ActivityDeclaration:
             ActivityExecution with custom options that can be called or started
         """
 
-    def with_options(self, **overrides) -> ActivityExecution:
+    def with_options(self, **overrides) -> ActivityExecution[P, R]:
         return ActivityExecution(
             name=self.name,
             arg_type=self.arg_type,
             start_options={**self.start_options, **overrides},
         )
 
-    def start(self, *args, **kwargs) -> ActivityHandle:
+    def start(self, *args: P.args, **kwargs: P.kwargs) -> ActivityHandle[R]:
         return self.with_options().start(*args, **kwargs)
 
 
@@ -165,7 +168,7 @@ def decl(
     cancellation_type: ActivityCancellationType = None,
     priority: Optional[Priority] = None,
     no_thread_cancel_exception: bool = None,
-) -> Callable[[T], ActivityDeclaration]:
+) -> Callable[[Callable[P, R]], ActivityDeclaration[P, R]]:
     """
     Declare an activity with Temporal options.
 
@@ -190,10 +193,8 @@ def decl(
     ...
 
 
-def decl(
-    task_queue: str, *, no_thread_cancel_exception=None, **start_options
-) -> Callable[[T], ActivityDeclaration]:
-    def decorator(func: T) -> ActivityDeclaration:
+def decl(task_queue: str, *, no_thread_cancel_exception=None, **start_options):
+    def decorator(func: Callable[P, R]) -> ActivityDeclaration[P, R]:
         defn_options = (
             {}
             if no_thread_cancel_exception is None
