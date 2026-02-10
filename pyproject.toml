@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "temporalio>=1.5.0",
+    "typing-extensions>=4.12",
 ]
 dynamic = ["version"]
 
